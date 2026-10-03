@@ -6,11 +6,16 @@ Identifies the active hardware mode:
   - Xbox 360 / Xbox One (X-Input) Mode (VID: 0x045e, PID: 0x028e/0x02d1/0x0b12)
   - Nintendo Switch Pro Mode (VID: 0x057e, PID: 0x2009)
   - DirectInput / Android Mode (Generic HID)
+Supports --watch mode for live monitoring during plug/unplug or mode hotkey changes.
 """
 
 import os
+import sys
+import time
 import glob
+import argparse
 from pathlib import Path
+from datetime import datetime
 
 BOLD = "\033[1m"
 GREEN = "\033[1;32m"
@@ -20,6 +25,9 @@ MAGENTA = "\033[1;35m"
 BLUE = "\033[1;34m"
 GRAY = "\033[0;90m"
 RESET = "\033[0m"
+CLEAR_SCREEN = "\033[2J\033[H"
+HIDE_CURSOR = "\033[?25l"
+SHOW_CURSOR = "\033[?25h"
 
 KNOWN_MODES = {
     ("054c", "09cc"): {
@@ -73,14 +81,14 @@ KNOWN_MODES = {
     },
 }
 
-def scan_controllers():
-    print(f"{CYAN}========================================================================{RESET}")
-    print(f"{BOLD} 🎮 Multi-Platform Gamepad Mode Detector{RESET}")
-    print(f"{CYAN}========================================================================{RESET}\n")
+def scan_controllers() -> str:
+    lines = []
+    lines.append(f"{CYAN}========================================================================{RESET}")
+    lines.append(f"{BOLD} 🎮 Multi-Platform Gamepad Mode Detector{RESET}  {GRAY}[{datetime.now().strftime('%H:%M:%S')}]{RESET}")
+    lines.append(f"{CYAN}========================================================================{RESET}\n")
 
     found_any = False
 
-    # Scan USB devices in sysfs
     for dev_path in sorted(glob.glob("/sys/bus/usb/devices/*")):
         p = Path(dev_path)
         id_vendor_f = p / "idVendor"
@@ -120,7 +128,6 @@ def scan_controllers():
                     active_driver = driver_link.resolve().name
                     break
 
-            # Also check HID drivers
             for hid_child in p.glob("*:*/*:*"):
                 driver_link = hid_child / "driver"
                 if driver_link.exists():
@@ -128,20 +135,45 @@ def scan_controllers():
 
             tag = f"{GREEN}[GAMESIR CONTROLLER]{RESET}" if is_gamesir else f"{BLUE}[GAMEPAD]{RESET}"
 
-            print(f"{tag} {BOLD}{product}{RESET} {GRAY}(Bus {busnum}, Dev {devnum}){RESET}")
-            print(f"  {BOLD}Active Mode:{RESET}      {YELLOW}{mode_info['mode']}{RESET}")
-            print(f"  {BOLD}Hardware VID:PID:{RESET} 0x{vid}:0x{pid} (Manufacturer: {manufacturer})")
-            print(f"  {BOLD}Protocol:{RESET}         {mode_info['protocol']}")
-            print(f"  {BOLD}Bound Driver:{RESET}     {CYAN}{active_driver}{RESET} (Expected: {mode_info['expected_driver']})")
-            print(f"  {BOLD}Capabilities:{RESET}     {mode_info['features']}")
+            lines.append(f"{tag} {BOLD}{product}{RESET} {GRAY}(Bus {busnum}, Dev {devnum}){RESET}")
+            lines.append(f"  {BOLD}Active Mode:{RESET}      {YELLOW}{mode_info['mode']}{RESET}")
+            lines.append(f"  {BOLD}Hardware VID:PID:{RESET} 0x{vid}:0x{pid} (Manufacturer: {manufacturer})")
+            lines.append(f"  {BOLD}Protocol:{RESET}         {mode_info['protocol']}")
+            lines.append(f"  {BOLD}Bound Driver:{RESET}     {CYAN}{active_driver}{RESET} (Expected: {mode_info['expected_driver']})")
+            lines.append(f"  {BOLD}Capabilities:{RESET}     {mode_info['features']}")
 
             if mode_info.get("hotkey_hint"):
-                print(f"  {BOLD}Mode Switch Tip:{RESET}  {GRAY}{mode_info['hotkey_hint']}{RESET}")
-            print("-" * 72)
+                lines.append(f"  {BOLD}Mode Switch Tip:{RESET}  {GRAY}{mode_info['hotkey_hint']}{RESET}")
+            lines.append("-" * 72)
 
     if not found_any:
-        print(f"{YELLOW}No recognized gamepad (PS4/Xbox/Switch) found on the USB bus.{RESET}")
-        print("Ensure the controller is turned on and connected via USB cable or wireless dongle.\n")
+        lines.append(f"{YELLOW}No recognized gamepad (PS4/Xbox/Switch) found on the USB bus.{RESET}")
+        lines.append("Ensure the controller is turned on and connected via USB cable or wireless dongle.\n")
+
+    return "\n".join(lines)
+
+def main():
+    parser = argparse.ArgumentParser(description="Multi-Platform Gamepad Mode Detector")
+    parser.add_argument("-w", "--watch", action="store_true", help="Live watch mode (periodically refreshes screen)")
+    parser.add_argument("-n", "--interval", type=float, default=1.0, help="Refresh interval in seconds for watch mode (default: 1.0s)")
+    args = parser.parse_args()
+
+    if not args.watch:
+        print(scan_controllers())
+        return
+
+    sys.stdout.write(HIDE_CURSOR)
+    try:
+        while True:
+            output = scan_controllers()
+            sys.stdout.write(CLEAR_SCREEN + output + f"\n{GRAY}[Watch mode active (interval: {args.interval}s). Press Ctrl+C to exit]{RESET}\n")
+            sys.stdout.flush()
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        sys.stdout.write(SHOW_CURSOR)
+        print("\nExited mode detector.")
 
 if __name__ == "__main__":
-    scan_controllers()
+    main()
