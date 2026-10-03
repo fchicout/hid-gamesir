@@ -1,7 +1,7 @@
 # `hid-gamesir` - Linux Kernel HID Driver for GameSir Controllers
 
 [![Build & Test](https://github.com/fchicout/hid-gamesir/actions/workflows/build-test.yml/badge.svg)](https://github.com/fchicout/hid-gamesir/actions/workflows/build-test.yml)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=fchicout_hid-gamesir&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=fchicout_hid-gamesir)
+[![Quality Gate Status](https://sonar.fchicout.dev/api/project_badges/measure?project=hid-gamesir&metric=alert_status)](https://sonar.fchicout.dev/dashboard?id=hid-gamesir)
 [![License: GPL-2.0](https://img.shields.io/badge/License-GPL_2.0-blue.svg)](LICENSE)
 [![SemVer](https://img.shields.io/badge/semver-0.1.0-blue)](https://semver.org)
 
@@ -65,22 +65,12 @@ sudo rmmod hid-gamesir
 
 ---
 
-## 📊 SonarCloud Setup Guide
+## 📊 SonarQube Integration
 
-To connect this repository to **SonarCloud**:
-
-1. Log into [SonarCloud.io](https://sonarcloud.io/) with your GitHub account (`fchicout`).
-2. Click **"+"** (Top right) $\rightarrow$ **Analyze new project**.
-3. Select the organization: **`fchicout`**.
-4. Choose the repository: **`hid-gamesir`** and click **Set Up**.
-5. Choose **With GitHub Actions** as the analysis method.
-6. Copy the generated `SONAR_TOKEN`.
-7. In your GitHub repository:
-   - Go to **Settings** $\rightarrow$ **Secrets and variables** $\rightarrow$ **Actions**.
-   - Click **New repository secret**.
-   - Name: `SONAR_TOKEN`.
-   - Secret: *(paste your Sonar token)*.
-8. The workflow in [`.github/workflows/sonarcloud.yml`](.github/workflows/sonarcloud.yml) will trigger on each push or pull request to `main`.
+The repository is configured for automated code quality and security analysis against [**sonar.fchicout.dev**](https://sonar.fchicout.dev):
+- **Project Key:** `hid-gamesir`
+- **Secrets Configured:** `SONAR_TOKEN` and `SONAR_HOST_URL` in GitHub Actions secrets.
+- **Workflow:** [`.github/workflows/sonarqube.yml`](.github/workflows/sonarqube.yml) uses Sonar Build Wrapper to capture compilation units during `make`.
 
 ---
 

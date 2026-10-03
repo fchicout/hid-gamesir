@@ -1,4 +1,4 @@
-name: SonarCloud Code Analysis
+name: SonarQube Code Analysis
 
 on:
   push:
@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  sonarcloud:
-    name: SonarCloud C Analysis
+  sonarqube:
+    name: SonarQube C Analysis
     runs-on: ubuntu-latest
 
     steps:
@@ -24,17 +24,19 @@ jobs:
           sudo apt-get install -y build-essential kmod linux-headers-generic
 
       - name: Install Sonar Build Wrapper
-        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v4
+        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v5
+        with:
+          sonar-host-url: ${{ secrets.SONAR_HOST_URL }}
 
       - name: Run Build Wrapper
         run: |
           build-wrapper-linux-x86-64 --out-dir bw-output make
 
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v5
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           args: >
             -Dsonar.cfamily.build-wrapper-output=bw-output
