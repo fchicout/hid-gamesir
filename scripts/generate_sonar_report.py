@@ -24,6 +24,8 @@ def run_cppcheck() -> tuple:
         "--enable=warning,style,performance,portability",
         "--suppress=missingIncludeSystem",
         "--suppress=unusedFunction",
+        "--suppress=constParameterCallback",
+        "--inline-suppr",
         "--inconclusive",
         "--xml",
         "--xml-version=2",

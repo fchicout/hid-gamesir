@@ -46,11 +46,11 @@ static bool is_gamesir_device(const struct hid_device *hdev)
 	return false;
 }
 
+// cppcheck-suppress constParameterCallback
 static int gamesir_raw_event(struct hid_device *hdev, struct hid_report *report,
 			     u8 *data, int size)
 {
 	struct gamesir_device *gdev = hid_get_drvdata(hdev);
-	unsigned long flags;
 
 	if (!gdev || !data || size < 33)
 		return 0;
@@ -61,6 +61,7 @@ static int gamesir_raw_event(struct hid_device *hdev, struct hid_report *report,
 	 * GameSir leaves it as 0x00 over USB, which causes upstream drivers to report 5%.
 	 */
 	if (data[0] == 0x01) {
+		unsigned long flags;
 		const u8 bat_byte = data[30];
 		const u8 bat_level = bat_byte & 0x0F;
 
