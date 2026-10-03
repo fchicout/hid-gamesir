@@ -1,6 +1,6 @@
-# `hid-gamesir` - Linux Kernel HID Driver for GameSir Controllers
+# `hid_gamesir` - Linux Kernel HID Driver for GameSir Controllers
 
-[![Build & Test](https://github.com/fchicout/hid-gamesir/actions/workflows/build-test.yml/badge.svg)](https://github.com/fchicout/hid-gamesir/actions/workflows/build-test.yml)
+[![Build & Test](https://github.com/fchicout/hid_gamesir/actions/workflows/build-test.yml/badge.svg)](https://github.com/fchicout/hid_gamesir/actions/workflows/build-test.yml)
 [![Quality Gate Status](https://sonar.fchicout.dev/api/project_badges/measure?project=hid-gamesir&metric=alert_status)](https://sonar.fchicout.dev/dashboard?id=hid-gamesir)
 [![License: GPL-2.0](https://img.shields.io/badge/License-GPL_2.0-blue.svg)](LICENSE)
 [![SemVer](https://img.shields.io/badge/semver-0.1.0-blue)](https://semver.org)
@@ -37,8 +37,8 @@ However:
 ### Method 1: Automatic DKMS Installation (Recommended)
 
 ```bash
-git clone https://github.com/fchicout/hid-gamesir.git
-cd hid-gamesir
+git clone https://github.com/fchicout/hid_gamesir.git
+cd hid_gamesir
 sudo ./scripts/dkms-install.sh
 ```
 
