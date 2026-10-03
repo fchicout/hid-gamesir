@@ -45,7 +45,6 @@ jobs:
           args: >
             -Dsonar.cfamily.build-wrapper-output=bw-output
             -Dsonar.externalIssuesReportPaths=sonar-issues.json
-            -Dsonar.qualitygate.wait=true
 
       - name: SonarQube Quality Gate Check
         uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
