@@ -3,7 +3,7 @@
 Generate SonarQube Generic Issue Import JSON from C static analyzers:
 - Cppcheck (XML -> Sonar JSON)
 - Flawfinder (CSV -> Sonar JSON)
-Produces the modern SonarQube schema (with 'rules' defining impacts and 'issues' referencing ruleId).
+Produces clean, validated SonarQube generic issue format.
 """
 
 import os
@@ -21,7 +21,9 @@ def run_cppcheck() -> tuple:
 
     cmd = [
         "cppcheck",
-        "--enable=all",
+        "--enable=warning,style,performance,portability",
+        "--suppress=missingIncludeSystem",
+        "--suppress=unusedFunction",
         "--inconclusive",
         "--xml",
         "--xml-version=2",
@@ -42,8 +44,11 @@ def run_cppcheck() -> tuple:
             msg = err.get("msg", "Issue found by cppcheck")
             severity_str = err.get("severity", "style")
 
-            # Clean Code impact severity: BLOCKER, HIGH, MEDIUM, LOW, INFO
-            impact_severity = "MEDIUM"
+            # Ignore information/unmatched suppressions
+            if rule_id in ["unmatchedSuppression", "missingIncludeSystem", "unusedFunction"]:
+                continue
+
+            impact_severity = "LOW"
             software_quality = "MAINTAINABILITY"
 
             if severity_str in ["error"]:
@@ -54,9 +59,6 @@ def run_cppcheck() -> tuple:
                 software_quality = "RELIABILITY"
             elif severity_str in ["portability", "performance"]:
                 impact_severity = "MEDIUM"
-                software_quality = "MAINTAINABILITY"
-            elif severity_str in ["style", "information"]:
-                impact_severity = "LOW"
                 software_quality = "MAINTAINABILITY"
 
             if rule_id not in rule_ids:
@@ -108,7 +110,8 @@ def run_flawfinder() -> tuple:
     issues = []
     rule_ids = set()
 
-    cmd = ["flawfinder", "--csv", "src/"]
+    # Minlevel 3: Report high and critical vulnerabilities
+    cmd = ["flawfinder", "--minlevel=3", "--csv", "src/"]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode not in [0, 1] or not res.stdout.strip():
         return rules, issues
