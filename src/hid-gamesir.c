@@ -24,13 +24,23 @@ module_param(disable_battery_node, bool, 0644);
 MODULE_PARM_DESC(disable_battery_node,
 		 "Disable registering the faulty power_supply battery node (default: true)");
 
-static bool is_gamesir_device(struct hid_device *hdev)
+static const char * const gamesir_signatures[] = {
+	"Chicken Run",
+	"GameSir",
+	"GAMESIR",
+	"gamesir",
+};
+
+static bool is_gamesir_device(const struct hid_device *hdev)
 {
-	if (strstr(hdev->name, "Chicken Run") ||
-	    strstr(hdev->name, "GameSir") ||
-	    strstr(hdev->name, "GAMESIR") ||
-	    strstr(hdev->name, "gamesir")) {
-		return true;
+	size_t i;
+
+	if (!hdev || !hdev->name[0])
+		return false;
+
+	for (i = 0; i < ARRAY_SIZE(gamesir_signatures); i++) {
+		if (strstr(hdev->name, gamesir_signatures[i]))
+			return true;
 	}
 
 	return false;
@@ -40,23 +50,30 @@ static int gamesir_raw_event(struct hid_device *hdev, struct hid_report *report,
 			     u8 *data, int size)
 {
 	struct gamesir_device *gdev = hid_get_drvdata(hdev);
+	unsigned long flags;
 
-	if (!gdev)
+	if (!gdev || !data || size < 33)
 		return 0;
 
 	/*
 	 * In standard DS4 emulation (Report ID 0x01, size >= 33):
 	 * Byte 30 is the battery telemetry byte in official DualShock 4 reports.
-	 * GameSir leaves it as 0x00 over USB, which leads hid-playstation to calculate 5%.
+	 * GameSir leaves it as 0x00 over USB, which causes upstream drivers to report 5%.
 	 */
-	if (data && size >= 33 && data[0] == 0x01) {
-		u8 bat_byte = data[30];
-		u8 bat_level = bat_byte & 0x0F;
+	if (data[0] == 0x01) {
+		const u8 bat_byte = data[30];
+		const u8 bat_level = bat_byte & 0x0F;
 
-		/* If battery level is 0 over USB, device does not provide valid gauge */
+		spin_lock_irqsave(&gdev->lock, flags);
 		if (bat_level == 0 && (gdev->quirks & GAMESIR_QUIRK_NO_BATTERY_GAUGE)) {
-			/* Handled cleanly without propagating false low-battery state */
+			gdev->battery_capacity = -1;
+			gdev->battery_status = POWER_SUPPLY_STATUS_UNKNOWN;
+		} else {
+			gdev->battery_capacity = min_t(int, bat_level * 10, 100);
+			gdev->battery_status = (bat_byte & 0x10) ?
+				POWER_SUPPLY_STATUS_CHARGING : POWER_SUPPLY_STATUS_DISCHARGING;
 		}
+		spin_unlock_irqrestore(&gdev->lock, flags);
 	}
 
 	return 0;
@@ -84,7 +101,9 @@ static int gamesir_probe(struct hid_device *hdev, const struct hid_device_id *id
 		return -ENOMEM;
 
 	gdev->hdev = hdev;
-	gdev->quirks = id->driver_data;
+	gdev->quirks = (u32)id->driver_data;
+	gdev->battery_capacity = -1;
+	gdev->battery_status = POWER_SUPPLY_STATUS_UNKNOWN;
 	spin_lock_init(&gdev->lock);
 	hid_set_drvdata(hdev, gdev);
 

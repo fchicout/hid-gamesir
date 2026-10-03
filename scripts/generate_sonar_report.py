@@ -2,20 +2,23 @@
 """
 Generate SonarQube Generic Issue Import JSON from C static analyzers:
 - Cppcheck (XML -> Sonar JSON)
-- Flawfinder / Clang-Tidy / Checkpatch
+- Flawfinder (CSV -> Sonar JSON)
+Produces the modern SonarQube schema including 'rules' and 'issues'.
 """
 
 import os
 import sys
 import json
+import csv
 import xml.etree.ElementTree as ET
 import subprocess
 from pathlib import Path
 
-def run_cppcheck() -> list:
+def run_cppcheck() -> tuple:
+    rules = []
     issues = []
-    xml_output = "cppcheck-results.xml"
-    
+    rule_ids = set()
+
     cmd = [
         "cppcheck",
         "--enable=all",
@@ -24,13 +27,12 @@ def run_cppcheck() -> list:
         "--xml-version=2",
         "src/"
     ]
-    
+
     res = subprocess.run(cmd, capture_output=True, text=True)
-    # Cppcheck writes XML to stderr
     xml_data = res.stderr if res.stderr else res.stdout
-    
+
     if not xml_data.strip():
-        return issues
+        return rules, issues
 
     try:
         root = ET.fromstring(xml_data)
@@ -39,13 +41,10 @@ def run_cppcheck() -> list:
             rule_id = err.get("id", "cppcheck-generic")
             msg = err.get("msg", "Issue found by cppcheck")
             severity_str = err.get("severity", "style")
-            
-            # Map cppcheck severity to SonarQube
-            # Sonar severities: INFO, MINOR, MAJOR, CRITICAL, BLOCKER
-            # Sonar types: BUG, VULNERABILITY, CODE_SMELL
+
             sonar_severity = "MAJOR"
             sonar_type = "CODE_SMELL"
-            
+
             if severity_str in ["error"]:
                 sonar_severity = "CRITICAL"
                 sonar_type = "BUG"
@@ -62,6 +61,22 @@ def run_cppcheck() -> list:
                 sonar_severity = "INFO"
                 sonar_type = "CODE_SMELL"
 
+            if rule_id not in rule_ids:
+                rules.append({
+                    "id": rule_id,
+                    "name": f"Cppcheck: {rule_id}",
+                    "description": msg,
+                    "engineId": "cppcheck",
+                    "cleanCodeAttribute": "CONVENTIONAL",
+                    "impacts": [
+                        {
+                            "softwareQuality": "MAINTAINABILITY" if sonar_type == "CODE_SMELL" else "RELIABILITY",
+                            "severity": "MEDIUM"
+                        }
+                    ]
+                })
+                rule_ids.add(rule_id)
+
             loc = err.find("location")
             if loc is not None:
                 file_path = loc.get("file", "")
@@ -71,7 +86,6 @@ def run_cppcheck() -> list:
                 except ValueError:
                     line_num = 1
 
-                # Ensure relative path matches sonar sources
                 if file_path.startswith("./"):
                     file_path = file_path[2:]
 
@@ -92,21 +106,22 @@ def run_cppcheck() -> list:
     except Exception as e:
         print(f"Error parsing cppcheck XML: {e}", file=sys.stderr)
 
-    return issues
+    return rules, issues
 
-def run_flawfinder() -> list:
+def run_flawfinder() -> tuple:
+    rules = []
     issues = []
+    rule_ids = set()
+
     cmd = ["flawfinder", "--csv", "src/"]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode not in [0, 1] or not res.stdout.strip():
-        return issues
+        return rules, issues
 
     lines = res.stdout.strip().splitlines()
     if len(lines) <= 1:
-        return issues
+        return rules, issues
 
-    # CSV Header: File,Line,Column,DefaultLevel,Level,Warning,Suggestion,Category,RuleID,Context,...
-    import csv
     reader = csv.DictReader(lines)
     for row in reader:
         try:
@@ -126,6 +141,22 @@ def run_flawfinder() -> list:
             elif level == 2:
                 severity = "MAJOR"
 
+            if rule_id not in rule_ids:
+                rules.append({
+                    "id": rule_id,
+                    "name": f"Flawfinder: {rule_id}",
+                    "description": msg,
+                    "engineId": "flawfinder",
+                    "cleanCodeAttribute": "TRUSTWORTHY",
+                    "impacts": [
+                        {
+                            "softwareQuality": "SECURITY",
+                            "severity": "HIGH" if level >= 3 else "MEDIUM"
+                        }
+                    ]
+                })
+                rule_ids.add(rule_id)
+
             issues.append({
                 "engineId": "flawfinder",
                 "ruleId": rule_id,
@@ -143,29 +174,35 @@ def run_flawfinder() -> list:
         except Exception:
             continue
 
-    return issues
+    return rules, issues
 
 def main():
+    all_rules = []
     all_issues = []
-    
-    # Run cppcheck
+
     if subprocess.run(["which", "cppcheck"], capture_output=True).returncode == 0:
         print("[*] Running cppcheck...")
-        all_issues.extend(run_cppcheck())
+        r, i = run_cppcheck()
+        all_rules.extend(r)
+        all_issues.extend(i)
     else:
         print("[!] cppcheck not installed, skipping.")
 
-    # Run flawfinder if available
     if subprocess.run(["which", "flawfinder"], capture_output=True).returncode == 0:
         print("[*] Running flawfinder...")
-        all_issues.extend(run_flawfinder())
+        r, i = run_flawfinder()
+        all_rules.extend(r)
+        all_issues.extend(i)
     else:
         print("[!] flawfinder not installed, skipping.")
 
-    report = {"issues": all_issues}
+    report = {
+        "rules": all_rules,
+        "issues": all_issues
+    }
     output_path = Path("sonar-issues.json")
     output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    print(f"[+] Generated {output_path} with {len(all_issues)} issues for SonarQube.")
+    print(f"[+] Generated {output_path} with {len(all_rules)} rules and {len(all_issues)} issues for SonarQube.")
 
 if __name__ == "__main__":
     main()
