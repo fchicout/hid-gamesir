@@ -10,6 +10,7 @@
 
 #include <linux/types.h>
 #include <linux/hid.h>
+#include <linux/input.h>
 #include <linux/spinlock.h>
 
 #define USB_VENDOR_ID_SONY_SPOOFED	0x054c
@@ -22,6 +23,7 @@
 /**
  * struct gamesir_device - Driver private data for GameSir controllers
  * @hdev: Pointer to underlying HID device
+ * @gamepad: Registered Linux input_dev for standard gamepad events
  * @quirks: Device quirk bitmask
  * @lock: Spinlock protecting telemetry and state updates
  * @battery_capacity: Normalized capacity (-1 if unsupported/invalid)
@@ -29,6 +31,7 @@
  */
 struct gamesir_device {
 	struct hid_device *hdev;
+	struct input_dev *gamepad;
 	u32 quirks;
 	spinlock_t lock;
 	int battery_capacity;
