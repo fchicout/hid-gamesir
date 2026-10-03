@@ -3,7 +3,7 @@
 Generate SonarQube Generic Issue Import JSON from C static analyzers:
 - Cppcheck (XML -> Sonar JSON)
 - Flawfinder (CSV -> Sonar JSON)
-Produces the modern SonarQube schema including 'rules' and 'issues'.
+Produces the modern SonarQube schema (with 'rules' defining impacts and 'issues' referencing ruleId).
 """
 
 import os
@@ -42,24 +42,22 @@ def run_cppcheck() -> tuple:
             msg = err.get("msg", "Issue found by cppcheck")
             severity_str = err.get("severity", "style")
 
-            sonar_severity = "MAJOR"
-            sonar_type = "CODE_SMELL"
+            # Clean Code impact severity: BLOCKER, HIGH, MEDIUM, LOW, INFO
+            impact_severity = "MEDIUM"
+            software_quality = "MAINTAINABILITY"
 
             if severity_str in ["error"]:
-                sonar_severity = "CRITICAL"
-                sonar_type = "BUG"
+                impact_severity = "HIGH"
+                software_quality = "RELIABILITY"
             elif severity_str in ["warning"]:
-                sonar_severity = "MAJOR"
-                sonar_type = "BUG"
+                impact_severity = "MEDIUM"
+                software_quality = "RELIABILITY"
             elif severity_str in ["portability", "performance"]:
-                sonar_severity = "MAJOR"
-                sonar_type = "CODE_SMELL"
-            elif severity_str in ["style"]:
-                sonar_severity = "MINOR"
-                sonar_type = "CODE_SMELL"
-            elif severity_str in ["information"]:
-                sonar_severity = "INFO"
-                sonar_type = "CODE_SMELL"
+                impact_severity = "MEDIUM"
+                software_quality = "MAINTAINABILITY"
+            elif severity_str in ["style", "information"]:
+                impact_severity = "LOW"
+                software_quality = "MAINTAINABILITY"
 
             if rule_id not in rule_ids:
                 rules.append({
@@ -70,8 +68,8 @@ def run_cppcheck() -> tuple:
                     "cleanCodeAttribute": "CONVENTIONAL",
                     "impacts": [
                         {
-                            "softwareQuality": "MAINTAINABILITY" if sonar_type == "CODE_SMELL" else "RELIABILITY",
-                            "severity": "MEDIUM"
+                            "softwareQuality": software_quality,
+                            "severity": impact_severity
                         }
                     ]
                 })
@@ -90,10 +88,7 @@ def run_cppcheck() -> tuple:
                     file_path = file_path[2:]
 
                 issues.append({
-                    "engineId": "cppcheck",
                     "ruleId": rule_id,
-                    "severity": sonar_severity,
-                    "type": sonar_type,
                     "primaryLocation": {
                         "message": msg,
                         "filePath": file_path,
@@ -133,13 +128,13 @@ def run_flawfinder() -> tuple:
             msg = f"{row.get('Warning', 'Security finding')}: {row.get('Suggestion', '')}".strip()
             level = int(row.get("Level", 1))
 
-            severity = "MINOR"
+            impact_severity = "LOW"
             if level >= 4:
-                severity = "BLOCKER"
+                impact_severity = "BLOCKER"
             elif level == 3:
-                severity = "CRITICAL"
+                impact_severity = "HIGH"
             elif level == 2:
-                severity = "MAJOR"
+                impact_severity = "MEDIUM"
 
             if rule_id not in rule_ids:
                 rules.append({
@@ -151,17 +146,14 @@ def run_flawfinder() -> tuple:
                     "impacts": [
                         {
                             "softwareQuality": "SECURITY",
-                            "severity": "HIGH" if level >= 3 else "MEDIUM"
+                            "severity": impact_severity
                         }
                     ]
                 })
                 rule_ids.add(rule_id)
 
             issues.append({
-                "engineId": "flawfinder",
                 "ruleId": rule_id,
-                "severity": severity,
-                "type": "VULNERABILITY",
                 "primaryLocation": {
                     "message": msg,
                     "filePath": fpath,
