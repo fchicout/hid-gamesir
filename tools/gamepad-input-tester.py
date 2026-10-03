@@ -2,12 +2,13 @@
 """
 Real-Time Visual Gamepad Input & Paddle Tester (Linux)
 Supports both Linux evdev (/dev/input/event*) and jsdev (/dev/input/js*) APIs.
-Displays a live ASCII gamepad layout with real-time button highlights,
+Displays a pixel-perfect ASCII gamepad layout with real-time button highlights,
 stick coordinates, analog triggers, and L4/R4 back paddle detection.
 """
 
 import sys
 import os
+import re
 import glob
 import struct
 import select
@@ -16,7 +17,7 @@ import argparse
 import fcntl
 import array
 from pathlib import Path
-from typing import Optional, Tuple, Dict, List
+from typing import Optional, Tuple, Dict, List, Any
 
 # ANSI Escape Colors
 BOLD = "\033[1m"
@@ -27,6 +28,7 @@ RED = "\033[1;31m"
 BLUE = "\033[1;34m"
 MAGENTA = "\033[1;35m"
 GRAY = "\033[0;90m"
+WHITE_ON_GREEN = "\033[1;37;42m"
 RESET = "\033[0m"
 CLEAR_SCREEN = "\033[2J\033[H"
 HIDE_CURSOR = "\033[?25l"
@@ -60,10 +62,10 @@ BTN_TRIGGER_HAPPY2 = 0x2c1 # 705 (R4 / M2 Paddle)
 # Linux Absolute Axes
 ABS_X = 0x00               # Left Stick X
 ABS_Y = 0x01               # Left Stick Y
-ABS_Z = 0x02               # Left Trigger (or Right Stick X)
+ABS_Z = 0x02               # Left Trigger / Right Stick X
 ABS_RX = 0x03              # Right Stick X
 ABS_RY = 0x04              # Right Stick Y
-ABS_RZ = 0x05              # Right Trigger (or Right Stick Y)
+ABS_RZ = 0x05              # Right Trigger / Right Stick Y
 ABS_HAT0X = 0x10           # D-Pad X (-1, 0, 1)
 ABS_HAT0Y = 0x11           # D-Pad Y (-1, 0, 1)
 
@@ -71,6 +73,16 @@ ABS_HAT0Y = 0x11           # D-Pad Y (-1, 0, 1)
 JS_EVENT_BUTTON = 0x01
 JS_EVENT_AXIS = 0x02
 JS_EVENT_INIT = 0x80
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences to compute exact visible string width."""
+    return re.sub(r'\033\[[0-9;]*[a-zA-Z]', '', text)
+
+def pad_line(content: str, width: int = 70) -> str:
+    """Wrap content inside a rigid box line with exact character padding."""
+    vis_len = len(strip_ansi(content))
+    pad = max(0, width - vis_len)
+    return "│ " + content + (" " * pad) + " │"
 
 def get_device_name(dev_path: str) -> str:
     """Query human-readable device name via evdev ioctl or sysfs."""
@@ -103,7 +115,6 @@ def list_devices() -> List[Dict[str, Any]]:
     devices = []
     seen_realpaths = set()
 
-    # 1. Scan /dev/input/by-id/
     for p in sorted(glob.glob("/dev/input/by-id/*joystick*") + glob.glob("/dev/input/by-id/*event-joystick*")):
         real = os.path.realpath(p)
         if real in seen_realpaths:
@@ -120,7 +131,6 @@ def list_devices() -> List[Dict[str, Any]]:
             "readable": readable
         })
 
-    # 2. Scan /dev/input/js*
     for p in sorted(glob.glob("/dev/input/js*")):
         real = os.path.realpath(p)
         if real in seen_realpaths:
@@ -136,14 +146,12 @@ def list_devices() -> List[Dict[str, Any]]:
             "readable": readable
         })
 
-    # 3. Scan /dev/input/event*
     for p in sorted(glob.glob("/dev/input/event*")):
         real = os.path.realpath(p)
         if real in seen_realpaths:
             continue
         seen_realpaths.add(real)
         name = get_device_name(p)
-        # Filter obvious keyboard/mouse/power buttons
         if any(term in name.lower() for term in ["gamepad", "controller", "joystick", "chicken run", "sony", "xbox", "gamesir"]):
             readable = os.access(p, os.R_OK)
             devices.append({
@@ -161,14 +169,11 @@ def select_best_device() -> Optional[Dict[str, Any]]:
     if not devs:
         return None
 
-    # Prefer readable devices with controller/gamesir in name
     preferred = [d for d in devs if d["readable"] and any(k in d["name"].lower() for k in ["chicken run", "gamesir", "controller", "dualshock", "gamepad"])]
     if preferred:
-        # Prefer evdev for direct paddle (L4/R4) event codes
         ev_first = sorted(preferred, key=lambda d: 0 if d["type"] == "evdev" else 1)
         return ev_first[0]
 
-    # Fallback to any readable device
     readable = [d for d in devs if d["readable"]]
     if readable:
         return readable[0]
@@ -185,7 +190,7 @@ class GamepadState:
             "L3": False, "R3": False,
             "L4": False, "R4": False,
         }
-        # Axes
+        # Axes (-1.0 to 1.0 or 0.0 to 1.0)
         self.left_x = 0.0
         self.left_y = 0.0
         self.right_x = 0.0
@@ -194,25 +199,27 @@ class GamepadState:
         self.trigger_r = 0.0
         self.dpad_x = 0
         self.dpad_y = 0
-        self.last_event_str = "None"
+        self.last_event_str = "Listening for inputs..."
         self.event_count = 0
 
 def draw_hud(state: GamepadState, dev_info: Dict[str, Any]):
-    def btn_tag(name: str, pressed: bool) -> str:
-        if pressed:
-            return f"\033[1;30;42m {name} \033[0m"
+    BOX_WIDTH = 74
+
+    def btn_tag(label: str, active: bool, fixed_len: Optional[int] = None) -> str:
+        text = label
+        if fixed_len:
+            text = f"{label:^{fixed_len}}"
+        if active:
+            return f"{WHITE_ON_GREEN} {text} {RESET}"
         else:
-            return f"{GRAY}[{name}]{RESET}"
+            return f"{GRAY}[{text}]{RESET}"
 
-    # Visual Sticks
-    lx = int(round((state.left_x + 1.0) * 5))
-    ly = int(round((state.left_y + 1.0) * 2))
-    rx = int(round((state.right_x + 1.0) * 5))
-    ry = int(round((state.right_y + 1.0) * 2))
-
-    # Trigger bars
-    l2_bar = "█" * int(round(state.trigger_l * 8))
-    r2_bar = "█" * int(round(state.trigger_r * 8))
+    def trigger_bar(val: float, length: int = 8) -> str:
+        filled = int(round(val * length))
+        filled = max(0, min(length, filled))
+        empty = length - filled
+        pct = int(round(val * 100))
+        return f"{CYAN}[{'█' * filled}{'░' * empty}]{RESET} {pct:>3}%"
 
     dpad_up = state.dpad_y < 0
     dpad_down = state.dpad_y > 0
@@ -220,29 +227,53 @@ def draw_hud(state: GamepadState, dev_info: Dict[str, Any]):
     dpad_right = state.dpad_x > 0
 
     lines = []
-    lines.append(f"{CYAN}========================================================================{RESET}")
-    lines.append(f"{BOLD} 🎮 GameSir Cyclone 2 Live Input & Paddle Tester{RESET}  {GRAY}(Events: {state.event_count}){RESET}")
-    lines.append(f" {BLUE}Device:{RESET} {BOLD}{dev_info.get('name', 'Unknown')}{RESET}")
-    lines.append(f" {BLUE}Node:{RESET}   {dev_info.get('path')} {GRAY}(Real: {dev_info.get('realpath')}, Backend: {dev_info.get('type').upper()}){RESET}")
-    lines.append(f"{CYAN}========================================================================{RESET}")
-    lines.append("")
-    lines.append(f"     LT: {btn_tag('L2', state.buttons['L2'])} {CYAN}[{l2_bar:<8}]{RESET}                  RT: {btn_tag('R2', state.buttons['R2'])} {CYAN}[{r2_bar:<8}]{RESET}")
-    lines.append(f"     LB: {btn_tag('L1', state.buttons['L1'])}                                   RB: {btn_tag('R1', state.buttons['R1'])}")
-    lines.append("     ┌────────────────────────────────────────────────────────┐")
-    lines.append(f"     │  D-PAD             SELECT      HOME     START            │")
-    lines.append(f"     │    {btn_tag('▲', dpad_up)}              {btn_tag('BACK', state.buttons['SELECT'])}     {btn_tag('PS/M', state.buttons['MODE'])}    {btn_tag('START', state.buttons['START'])}            │")
-    lines.append(f"     │  {btn_tag('◀', dpad_left)}   {btn_tag('▶', dpad_right)}                                         {btn_tag('Y', state.buttons['Y'])}       │")
-    lines.append(f"     │    {btn_tag('▼', dpad_down)}         LEFT STICK          RIGHT STICK     {btn_tag('X', state.buttons['X'])}     {btn_tag('B', state.buttons['B'])}   │")
-    lines.append(f"     │                 (X:{state.left_x:+0.2f}, Y:{state.left_y:+0.2f})    (X:{state.right_x:+0.2f}, Y:{state.right_y:+0.2f})       {btn_tag('A', state.buttons['A'])}       │")
-    lines.append(f"     │                    {btn_tag('L3', state.buttons['L3'])}                 {btn_tag('R3', state.buttons['R3'])}                 │")
-    lines.append("     │                                                        │")
-    lines.append(f"     │    [REAR PADDLE L4]                [REAR PADDLE R4]    │")
-    lines.append(f"     │         {btn_tag('L4 / M1', state.buttons['L4'])}                         {btn_tag('R4 / M2', state.buttons['R4'])}         │")
-    lines.append("     └────────────────────────────────────────────────────────┘")
-    lines.append("")
-    lines.append(f"  {BOLD}Last Event:{RESET} {YELLOW}{state.last_event_str}{RESET}")
-    lines.append(f"  {GRAY}[Press Ctrl+C to exit. Press buttons, paddles & sticks to see live updates]{RESET}")
-    lines.append(f"{CYAN}------------------------------------------------------------------------{RESET}")
+    lines.append(f"{CYAN}┌" + "─" * (BOX_WIDTH + 2) + "┐" + RESET)
+    lines.append(pad_line(f"{BOLD}🎮 GameSir Cyclone 2 Live Input & Paddle Tester{RESET}  {GRAY}(Events: {state.event_count}){RESET}", BOX_WIDTH))
+    lines.append(pad_line(f"{BLUE}Device:{RESET} {BOLD}{dev_info.get('name', 'Unknown')}{RESET}", BOX_WIDTH))
+    lines.append(pad_line(f"{BLUE}Node:  {RESET} {dev_info.get('path')} {GRAY}(Backend: {dev_info.get('type').upper()}){RESET}", BOX_WIDTH))
+    lines.append(f"{CYAN}├" + "─" * (BOX_WIDTH + 2) + "┤" + RESET)
+    
+    # Shoulder & Triggers
+    lt_str = f"LT: {btn_tag('L2', state.buttons['L2'])} {trigger_bar(state.trigger_l, 8)}"
+    rt_str = f"RT: {btn_tag('R2', state.buttons['R2'])} {trigger_bar(state.trigger_r, 8)}"
+    lines.append(pad_line(f"{lt_str}                    {rt_str}", BOX_WIDTH))
+    
+    lb_str = f"LB: {btn_tag('L1', state.buttons['L1'])}"
+    rb_str = f"RB: {btn_tag('R1', state.buttons['R1'])}"
+    lines.append(pad_line(f"{lb_str}                                     {rb_str}", BOX_WIDTH))
+    
+    lines.append(pad_line("", BOX_WIDTH))
+
+    # Face Buttons and D-Pad Layout
+    lines.append(pad_line("       D-PAD               SYSTEM BUTTONS            ACTION BUTTONS", BOX_WIDTH))
+    lines.append(pad_line(f"        {btn_tag('▲', dpad_up, 1)}              {btn_tag('BACK', state.buttons['SELECT'])}  {btn_tag('M/PS', state.buttons['MODE'])}  {btn_tag('START', state.buttons['START'])}            {btn_tag('Y', state.buttons['Y'], 1)}", BOX_WIDTH))
+    lines.append(pad_line(f"     {btn_tag('◀', dpad_left, 1)}     {btn_tag('▶', dpad_right, 1)}                                      {btn_tag('X', state.buttons['X'], 1)}     {btn_tag('B', state.buttons['B'], 1)}", BOX_WIDTH))
+    lines.append(pad_line(f"        {btn_tag('▼', dpad_down, 1)}                                                   {btn_tag('A', state.buttons['A'], 1)}", BOX_WIDTH))
+    
+    lines.append(pad_line("", BOX_WIDTH))
+
+    # Analog Sticks
+    stick_l = f"STICK L: (X:{state.left_x:+0.2f}, Y:{state.left_y:+0.2f}) {btn_tag('L3', state.buttons['L3'])}"
+    stick_r = f"STICK R: (X:{state.right_x:+0.2f}, Y:{state.right_y:+0.2f}) {btn_tag('R3', state.buttons['R3'])}"
+    lines.append(pad_line(f"{stick_l}         {stick_r}", BOX_WIDTH))
+
+    lines.append(pad_line("", BOX_WIDTH))
+
+    # Back Paddles (L4 / R4)
+    l4_btn = btn_tag("L4 / M1", state.buttons["L4"])
+    r4_btn = btn_tag("R4 / M2", state.buttons["R4"])
+    lines.append(pad_line(f"   [REAR PADDLE L4]                                  [REAR PADDLE R4]", BOX_WIDTH))
+    lines.append(pad_line(f"      {l4_btn}                                          {r4_btn}", BOX_WIDTH))
+
+    lines.append(f"{CYAN}├" + "─" * (BOX_WIDTH + 2) + "┤" + RESET)
+    lines.append(pad_line(f"{BOLD}Last Event:{RESET} {YELLOW}{state.last_event_str}{RESET}", BOX_WIDTH))
+    lines.append(f"{CYAN}├" + "─" * (BOX_WIDTH + 2) + "┤" + RESET)
+    lines.append(pad_line(f"{BOLD}💡 Cyclone 2 Hardware Paddle Remap Guide:{RESET}", BOX_WIDTH))
+    lines.append(pad_line(f"   1. Hold {BOLD}M{RESET} + Press {BOLD}L4{RESET} (or {BOLD}R4{RESET}) until Home LED blinks.", BOX_WIDTH))
+    lines.append(pad_line(f"   2. Press target button (A, B, X, Y, LB, RB, L3, R3, etc.)", BOX_WIDTH))
+    lines.append(pad_line(f"   3. Press {BOLD}L4{RESET} (or {BOLD}R4{RESET}) again to save. It now emits that button!", BOX_WIDTH))
+    lines.append(pad_line(f"   {GRAY}[Press Ctrl+C to exit tester]{RESET}", BOX_WIDTH))
+    lines.append(f"{CYAN}└" + "─" * (BOX_WIDTH + 2) + "┘" + RESET)
 
     sys.stdout.write(CLEAR_SCREEN + "\n".join(lines) + "\n")
     sys.stdout.flush()
@@ -253,11 +284,10 @@ def run_evdev_tester(dev_info: Dict[str, Any]):
     fd = os.open(dev_path, os.O_RDONLY | os.O_NONBLOCK)
     state = GamepadState()
 
-    # struct input_event: (timeval time [16B on 64bit], uint16 type, uint16 code, int32 value) = 24 bytes
+    # struct input_event: (timeval [16B on 64bit], uint16 type, uint16 code, int32 value) = 24 bytes
     EVENT_FORMAT = "qqHHi"
     EVENT_SIZE = struct.calcsize(EVENT_FORMAT)
 
-    # Key code map
     KEY_MAP = {
         BTN_SOUTH: "A",
         BTN_EAST: "B",
@@ -357,7 +387,6 @@ def run_jsdev_tester(dev_info: Dict[str, Any]):
                         _, value, ev_type, number = struct.unpack(EVENT_FORMAT, data)
                         state.event_count += 1
 
-                        # Strip init flag
                         ev_type = ev_type & ~JS_EVENT_INIT
 
                         if ev_type == JS_EVENT_BUTTON:
@@ -445,7 +474,7 @@ def main():
 
     if not dev_info:
         print(f"{RED}Error: No gamepad/joystick device found under /dev/input/.{RESET}")
-        print("Ensure the controller is connected via USB or run `sudo python3 tools/gamepad-input-tester.py --list`.")
+        print("Ensure the controller is connected via USB or run `python3 tools/gamepad-input-tester.py --list`.")
         sys.exit(1)
 
     if not dev_info["readable"]:
