@@ -1,0 +1,5 @@
+# UDev rules for GameSir Controllers handled by hid-gamesir
+# Ensure appropriate permissions for hidraw and controller nodes
+
+# GameSir controller in DS4 emulation mode (Guangzhou Chicken Run)
+KERNEL=="hidraw*", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="09cc", ATTRS{manufacturer}=="Guangzhou Chicken Run*", MODE="0660", TAG+="uaccess"
