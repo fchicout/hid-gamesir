@@ -65,6 +65,29 @@ sudo rmmod hid-gamesir
 
 ---
 
+## 🎮 GameSir Cyclone 2 Hardware Mapping & Back Paddles (L4 / R4)
+
+The **GameSir Cyclone 2** features two programmable back paddles (**L4** and **R4**).
+
+### 1. On-Board Hardware Quick-Mapping (No Software Needed)
+- **Map Single Button:** Hold **`M` + `L4`** (or **`M` + `R4`**) for 2–3s until the indicator LED blinks $\rightarrow$ press target button (e.g. `A`, `B`, `X`, `Y`, `LB`, `RB`, `L3`, `R3`, `LT`, `RT`, D-pad) $\rightarrow$ press **`L4`** to save.
+- **Record Macro Sequence:** Hold **`M` + `L4`** until blinking $\rightarrow$ press desired button combo in sequence $\rightarrow$ press **`L4`** to save.
+- **Clear Mapping:** Hold **`M` + `L4`** until blinking $\rightarrow$ press **`L4`** immediately with no other buttons.
+
+### 2. Diagnostic & Testing Utilities
+```bash
+# Live Gamepad & Paddle Input Tester (Visual ASCII HUD)
+./tools/gamepad-input-tester.py
+
+# Multi-Platform Mode Detector (PS4 / Xbox / Switch)
+./tools/gamepad-mode-detect.py
+
+# Live Battery Level & Telemetry Monitor
+./tools/gamepad-battery.py --gamepads
+```
+
+---
+
 ## 📊 SonarQube Integration
 
 The repository is configured for automated code quality and security analysis against [**sonar.fchicout.dev**](https://sonar.fchicout.dev):

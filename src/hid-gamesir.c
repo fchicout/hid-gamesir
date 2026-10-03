@@ -87,6 +87,10 @@ static int gamesir_setup_input_dev(struct gamesir_device *gdev)
 	input_set_capability(input, EV_KEY, BTN_THUMBL);
 	input_set_capability(input, EV_KEY, BTN_THUMBR);
 
+	/* Back Paddle Capabilities (Cyclone 2 L4 / R4) */
+	input_set_capability(input, EV_KEY, BTN_TRIGGER_HAPPY1);
+	input_set_capability(input, EV_KEY, BTN_TRIGGER_HAPPY2);
+
 	/* Set Standard Gamepad Analog Axis Capabilities (0..255) */
 	input_set_abs_params(input, ABS_X, 0, 255, 0, 0);
 	input_set_abs_params(input, ABS_Y, 0, 255, 0, 0);
