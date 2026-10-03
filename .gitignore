@@ -19,6 +19,7 @@ Module.markers
 # Sonar / CI
 .scannerwork/
 .sonar/
+sonar-issues.json
 build-wrapper-dump.json
 bw-output/
 
