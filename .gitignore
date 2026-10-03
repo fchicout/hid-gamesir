@@ -1,0 +1,30 @@
+# Kernel build artifacts
+*.o
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+*.o.ur-safe
+.*.cmd
+.*.d
+.tmp_versions/
+modules.order
+Module.symvers
+Module.markers
+.cache.mk
+
+# DKMS build artifacts
+/dkms-build/
+
+# Sonar / CI
+.scannerwork/
+.sonar/
+build-wrapper-dump.json
+bw-output/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
