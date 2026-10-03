@@ -197,7 +197,10 @@ def main():
     }
     output_path = Path("sonar-issues.json")
     output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    print(f"[+] Generated {output_path} with {len(all_rules)} rules and {len(all_issues)} issues for SonarQube.")
+    print(f"[+] Generated {output_path} with {len(all_rules)} rules and {len(all_issues)} issues for SonarQube:")
+    for idx, iss in enumerate(all_issues, 1):
+        loc = iss["primaryLocation"]
+        print(f"    #{idx}: [{iss.get('ruleId')}] {loc['filePath']}:{loc['textRange']['startLine']} - {loc['message']}")
 
 if __name__ == "__main__":
     main()
