@@ -1,0 +1,40 @@
+name: SonarCloud Code Analysis
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  sonarcloud:
+    name: SonarCloud C Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Linux Kernel Headers & Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential kmod linux-headers-generic
+
+      - name: Install Sonar Build Wrapper
+        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v4
+
+      - name: Run Build Wrapper
+        run: |
+          build-wrapper-linux-x86-64 --out-dir bw-output make
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.cfamily.build-wrapper-output=bw-output
