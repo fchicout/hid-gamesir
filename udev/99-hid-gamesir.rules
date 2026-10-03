@@ -3,3 +3,6 @@
 
 # GameSir controller in DS4 emulation mode (Guangzhou Chicken Run)
 KERNEL=="hidraw*", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="09cc", ATTRS{manufacturer}=="Guangzhou Chicken Run*", MODE="0660", TAG+="uaccess"
+
+# Auto-rebind GameSir controllers to hid-gamesir instead of generic hid-playstation
+ACTION=="add", SUBSYSTEM=="hid", DRIVERS=="playstation", ATTRS{manufacturer}=="Guangzhou Chicken Run*", RUN+="/bin/sh -c 'echo $kernel > /sys/bus/hid/drivers/playstation/unbind; echo $kernel > /sys/bus/hid/drivers/hid-gamesir/bind'"
