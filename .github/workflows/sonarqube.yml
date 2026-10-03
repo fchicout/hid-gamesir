@@ -9,7 +9,7 @@ on:
 
 jobs:
   sonarqube:
-    name: SonarQube C Analysis
+    name: SonarQube C Analysis & Quality Gate
     runs-on: ubuntu-latest
 
     steps:
@@ -37,7 +37,7 @@ jobs:
           python3 scripts/generate_sonar_report.py
 
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -45,3 +45,11 @@ jobs:
           args: >
             -Dsonar.cfamily.build-wrapper-output=bw-output
             -Dsonar.externalIssuesReportPaths=sonar-issues.json
+            -Dsonar.qualitygate.wait=true
+
+      - name: SonarQube Quality Gate Check
+        uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
