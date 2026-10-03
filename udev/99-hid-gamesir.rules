@@ -5,4 +5,4 @@
 KERNEL=="hidraw*", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="09cc", ATTRS{manufacturer}=="Guangzhou Chicken Run*", MODE="0660", TAG+="uaccess"
 
 # Auto-rebind GameSir controllers to hid-gamesir instead of generic hid-playstation
-ACTION=="add", SUBSYSTEM=="hid", DRIVERS=="playstation", ATTRS{manufacturer}=="Guangzhou Chicken Run*", RUN+="/bin/sh -c 'echo $kernel > /sys/bus/hid/drivers/playstation/unbind; echo $kernel > /sys/bus/hid/drivers/hid-gamesir/bind'"
+SUBSYSTEM=="hid", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="09cc", ATTRS{manufacturer}=="Guangzhou Chicken Run*", RUN+="/bin/sh -c 'if [ -d /sys/bus/hid/drivers/playstation/%k ]; then echo %k > /sys/bus/hid/drivers/playstation/unbind; fi; if [ -d /sys/bus/hid/drivers/hid-gamesir ]; then echo %k > /sys/bus/hid/drivers/hid-gamesir/bind; fi'"
